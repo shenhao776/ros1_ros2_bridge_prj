@@ -1,0 +1,13 @@
+# 匹配 CustomMsg
+-
+  ros1_package_name: 'livox_ros_driver2'
+  ros1_message_name: 'CustomMsg'
+  ros2_package_name: 'livox_ros_driver2'
+  ros2_message_name: 'CustomMsg'
+
+# 匹配嵌套的 CustomPoint 消息
+-
+  ros1_package_name: 'livox_ros_driver2'
+  ros1_message_name: 'CustomPoint'
+  ros2_package_name: 'livox_ros_driver2'
+  ros2_message_name: 'CustomPoint'
