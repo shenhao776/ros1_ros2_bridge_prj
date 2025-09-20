@@ -5,4 +5,5 @@ log
 logs
 .vscode
 .bag
+__pycache__
 .pyc
