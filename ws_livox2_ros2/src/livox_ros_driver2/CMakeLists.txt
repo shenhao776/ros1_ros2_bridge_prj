@@ -187,10 +187,6 @@ if(ROS_EDITION STREQUAL "ROS1")
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch_ROS1
   )
   
-  install(
-  FILES mapping_rules.yaml
-  DESTINATION share/${PROJECT_NAME}
-)
 
   #---------------------------------------------------------------------------------------
   # end of CMakeList.txt
@@ -340,10 +336,19 @@ else(ROS_EDITION STREQUAL "ROS2")
     #set(ament_cmake_cpplint_FOUND TRUE)
     ament_lint_auto_find_test_dependencies()
   endif()
+  
+   # 确保 mapping_rules.yaml 文件被正确安装
+  install(
+    FILES mapping_rules.yaml
+    DESTINATION share/${PROJECT_NAME}
+  )
 
+  # 确保 ament 能够索引到 ros1_bridge 的这个 export
+  ament_export_dependencies(ros1_bridge)
   ament_auto_package(INSTALL_TO_SHARE
     config
     launch_ROS2
   )
+
 
 endif()
