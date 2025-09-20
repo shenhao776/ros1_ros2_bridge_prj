@@ -1,0 +1,8 @@
+build
+devel
+install
+log
+logs
+.vscode
+.bag
+.pyc
