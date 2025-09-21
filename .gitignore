@@ -4,6 +4,6 @@ install
 log
 logs
 .vscode
-.bag
+*.bag
 __pycache__
 .pyc
