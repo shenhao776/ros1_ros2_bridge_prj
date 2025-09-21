@@ -131,8 +131,7 @@ docker run -it --rm -v /tmp/.x11-unix:/tmp/.x11-unix \
                 -v /dev:/dev \
                 --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all \
                 -e DISPLAY=unix$DISPLAY -e GDK_SCALE -e GDK_DPI_SCALE \
-                --privileged --name "bag_converter_tmp"\
-                --net=host --user root shenhao776/amr_ros1_x86:v0.3 \
+                --privileged --net=host --user root shenhao776/amr_ros1_x86:v0.3 \
                 /root/shared_files/ros1_ros2_bridge_prj/scripts/bag_converter.py \
                 /path_to_ros2_bag_file /root/shared_files/rosbag/ros1bag/lvio_bag/bag_name.bag
 ```
