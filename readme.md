@@ -132,5 +132,5 @@ ros1_env
 rosbag record -a -O ros1_bag_name.bag
 # terminal 4
 ros2_env
-ros2 bag play ros2_bag_file/
+ros2 bag play /root/dataset/ros2bags/rosbag2_2025_09_19-22_26_25/
 ```
