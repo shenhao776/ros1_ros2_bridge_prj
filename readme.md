@@ -121,6 +121,9 @@ alias bridge_env="source /opt/ros/noetic/setup.bash && \
 ```bash
 docker pull shenhao776/amr_ros1_x86:v0.3
 
+# Build 
+TODO
+
 # replace '/path_to_ros2_bag_file' and '/root/shared_files/rosbag/ros1bag/lvio_bag/bag_name.bag'
 docker run -it --rm -v /tmp/.x11-unix:/tmp/.x11-unix \
                 -v ~/shared_files:/root/shared_files \
