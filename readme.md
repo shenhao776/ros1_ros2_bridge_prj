@@ -94,22 +94,22 @@ fi
 
 # --- Base ROS Environments ---
 # ROS 1 Noetic
-alias ros1_env="source /opt/ros/noetic/setup.bash && source /root/shared_files/ros1_ros2_bridge_prj/ws_livox2_ros1/devel/setup.bash && echo 'ROS 1 Noetic environment sourced.'"
+alias ros1_env="source /opt/ros/noetic/setup.bash && source ~/catkin_ws/devel/setup.bash && echo 'ROS 1 Noetic environment sourced.'"
 
 # ROS 2 Galactic
-alias ros2_env="source /opt/ros/galactic/setup.bash && source /root/shared_files/ros1_ros2_bridge_prj/bridge_ws/install/setup.bash && echo 'ROS 2 Galactic environment sourced.'"
+alias ros2_env="source /opt/ros/galactic/setup.bash && source /root/shared_files/ros1_ros2_bridge_prj/bridge_ws/install/local_setup.bash && echo 'ROS 2 Galactic environment sourced.'"
 
 # --- Bridge Environment ---
 # ROS 1, ROS 2, and Bridge Workspaces
 alias bridge_env="source /opt/ros/noetic/setup.bash && \
+		          source ~/catkin_ws/devel/setup.bash && \
                   source /opt/ros/galactic/setup.bash && \
-                  source /root/shared_files/ros1_ros2_bridge_prj/ws_livox2_ros1/devel/setup.bash && \
-                  source /root/shared_files/ros1_ros2_bridge_prj/bridge_ws/install/setup.bash && \
+                  source /root/shared_files/ros1_ros2_bridge_prj/bridge_ws/install/local_setup.bash && \
                   export ROS_MASTER_URI=http://localhost:11311 && \
                   echo 'ROS1, ROS2 & Bridge environments sourced. ROS_MASTER_URI is set.'"
 
 # Set a default environment for new terminals
-ros1_env
+#ros1_env
 # ros2_env
 # bridge_env
 
@@ -122,15 +122,19 @@ ros1_env
 ## 运行
 
 ```bash
-# terminal 1
-roscore
-# terminal 2
-bridge_env
-ros2 launch ~/dynamic_bridge_launch.py
-# terminal 3
-ros1_env
-rosbag record -a -O ros1_bag_name.bag
-# terminal 4
-ros2_env
-ros2 bag play /root/dataset/ros2bags/rosbag2_2025_09_19-22_26_25/
+# one command 
+./bag_converter.py /ros2_bag_file ros1_bag.bag
+
+# # terminal 1
+# ros1_env
+# roscore
+# # terminal 2
+# bridge_env
+# ros2 launch ~/dynamic_bridge_launch.py
+# # terminal 3
+# bridge_env
+# rosbag record -a -O ros1_bag_name.bag
+# # terminal 4
+# ros2_env
+# ros2 bag play /root/dataset/ros2bags/rosbag2_2025_09_19-22_26_25/ -r 0.5 --read-ahead-queue-size 2000
 ```
