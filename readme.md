@@ -1,7 +1,7 @@
-# ros1 ros2消息互相转换工作空间
+# Convert the ros2bag with livox lidar custom messages to a ros1bag
+# 把带有livox雷达的自定义消息的ros2bag转成ros1bag
 
-## 参考.bashrc文件
-
+## .bashrc for reference
 ```bash
 # ~/.bashrc: executed by bash(1) for non-login shells.
 # see /usr/share/doc/bash/examples/startup-files (in the package bash-doc)
@@ -117,14 +117,28 @@ alias bridge_env="source /opt/ros/noetic/setup.bash && \
 # ================= End of ROS Setup ============================
 # ===============================================================
 
+# Run with docker (recommend)
+```bash
+docker pull shenhao776/amr_ros1_x86:v0.3
+
+# replace '/path_to_ros2_bag_file' and '/root/shared_files/rosbag/ros1bag/lvio_bag/bag_name.bag'
+docker run -it --rm -v /tmp/.x11-unix:/tmp/.x11-unix \
+                -v ~/shared_files:/root/shared_files \
+                -v /dev:/dev \
+                --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all \
+                -e DISPLAY=unix$DISPLAY -e GDK_SCALE -e GDK_DPI_SCALE \
+                --privileged --name "bag_converter_tmp"\
+                --net=host --user root shenhao776/amr_ros1_x86:v0.3 \
+                /root/shared_files/ros1_ros2_bridge_prj/scripts/bag_converter.py \
+                /path_to_ros2_bag_file /root/shared_files/rosbag/ros1bag/lvio_bag/bag_name.bag
 ```
 
-## 运行
-
+## Manually run
 ```bash
 # one command 
 ./bag_converter.py /ros2_bag_file ros1_bag.bag
 
+# or step by step: 
 # # terminal 1
 # ros1_env
 # roscore
