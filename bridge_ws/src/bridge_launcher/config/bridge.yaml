@@ -1,0 +1,88 @@
+# 仅桥接ROS2到ROS1的话题（单向）
+topics_2_to_1:
+  -
+    topic: /camera/camera/color/image_raw/
+    type: sensor_msgs/msg/Image
+    queue_size: 50  # 增大队列容量，减少溢出
+    qos:
+      history: keep_last  # 保留最近的消息（若内存允许，可改为keep_all）
+      depth: 50           # 队列深度与queue_size匹配
+      reliability: reliable  # 可靠传输（确保消息不丢失，会重试）
+      durability: transient_local  # 暂存消息，允许ROS1端晚启动也能接收
+      deadline:
+          secs: 10        # 10秒内未收到消息则视为超时
+          nsecs: 0
+      lifespan:
+          secs: 30        # 消息有效期30秒（根据数据时效性调整）
+          nsecs: 0
+      liveliness: LIVELINESS_AUTOMATIC  # 自动维护活跃状态
+      liveliness_lease_duration:
+          secs: 20        # 20秒内无消息则视为节点失活
+          nsecs: 0
+
+  -
+    topic: /livox/lidar
+    type: livox_ros_driver2/msg/CustomMsg
+    queue_size: 50
+    qos:
+      history: keep_last
+      depth: 50
+      reliability: reliable
+      durability: transient_local
+      deadline:
+          secs: 10
+          nsecs: 0
+      lifespan:
+          secs: 30
+          nsecs: 0
+      liveliness: LIVELINESS_AUTOMATIC
+      liveliness_lease_duration:
+          secs: 20
+          nsecs: 0
+
+  -
+    topic: /livox/point
+    type: sensor_msgs/msg/PointCloud2
+    queue_size: 50
+    qos:
+      history: keep_last
+      depth: 50
+      reliability: reliable
+      durability: transient_local
+      deadline:
+          secs: 10
+          nsecs: 0
+      lifespan:
+          secs: 30
+          nsecs: 0
+      liveliness: LIVELINESS_AUTOMATIC
+      liveliness_lease_duration:
+          secs: 20
+          nsecs: 0
+
+  -
+    topic: /livox/imu
+    type: sensor_msgs/msg/Imu
+    queue_size: 50
+    qos:
+      history: keep_last
+      depth: 50
+      reliability: reliable
+      durability: transient_local
+      deadline:
+          secs: 10
+          nsecs: 0
+      lifespan:
+          secs: 30
+          nsecs: 0
+      liveliness: LIVELINESS_AUTOMATIC
+      liveliness_lease_duration:
+          secs: 20
+          nsecs: 0
+
+# 若有ROS2到ROS1的服务需要桥接，添加以下配置
+# services_2_to_1:
+#   -
+#     service: /你的服务名称
+#     type: 服务类型（如：example_interfaces/srv/AddTwoInts）
+    

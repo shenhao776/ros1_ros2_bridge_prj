@@ -133,7 +133,19 @@ docker run -it --rm -v /tmp/.x11-unix:/tmp/.x11-unix \
                 -e DISPLAY=unix$DISPLAY -e GDK_SCALE -e GDK_DPI_SCALE \
                 --privileged --net=host --user root shenhao776/amr_ros1_x86:v0.3 \
                 /root/shared_files/ros1_ros2_bridge_prj/scripts/bag_converter.py \
-                /path_to_ros2_bag_file /root/shared_files/rosbag/ros1bag/lvio_bag/bag_name.bag
+                /root/shared_files/rosbag/ros1bag/ros2bags/nav_bag_2025-09-21_23-33-36 /root/shared_files/rosbag/ros1bag/lvio_bag/nav_bag_2025-09-21_23-33-36.bag
+
+# run in another docker container
+     ssh -o StrictHostKeyChecking=no hao@localhost \
+     "docker run --rm -e ROS_DOMAIN_ID=1 \
+     -v /tmp/.x11-unix:/tmp/.x11-unix \
+     -v ~/shared_files:/root/shared_files \
+     -v /dev:/dev \
+     --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all \
+     -e DISPLAY=unix$DISPLAY -e GDK_SCALE -e GDK_DPI_SCALE \
+     --privileged --net=host --user root shenhao776/amr_ros1_x86:v0.3 \
+     /root/shared_files/ros1_ros2_bridge_prj/scripts/bag_converter.py \
+     /root/shared_files/rosbag/ros1bag/ros2bags/nav_bag_2025-09-21_23-33-36 /root/shared_files/rosbag/ros1bag/lvio_bag/nav_bag_2025-09-21_23-33-36.bag"
 ```
 
 ## Manually run
@@ -142,16 +154,16 @@ docker run -it --rm -v /tmp/.x11-unix:/tmp/.x11-unix \
 ./bag_converter.py /ros2_bag_file ros1_bag.bag
 
 # or step by step: 
-# # terminal 1
-# ros1_env
-# roscore
-# # terminal 2
-# bridge_env
-# ros2 launch ~/dynamic_bridge_launch.py
-# # terminal 3
-# bridge_env
-# rosbag record -a -O ros1_bag_name.bag
-# # terminal 4
-# ros2_env
-# ros2 bag play /root/dataset/ros2bags/rosbag2_2025_09_19-22_26_25/ -r 0.5 --read-ahead-queue-size 2000
+# terminal 1
+ros1_env
+roscore
+# terminal 2
+bridge_env
+ros2 launch ~/dynamic_bridge_launch.py
+# terminal 3
+bridge_env
+rosbag record -a -O ros1_bag_name.bag
+# terminal 4
+ros2_env
+ros2 bag play /root/shared_files/rosbag/ros1bag/ros2bags/nav_bag_2025-09-21_23-33-36 -r 0.5 --read-ahead-queue-size 2000
 ```

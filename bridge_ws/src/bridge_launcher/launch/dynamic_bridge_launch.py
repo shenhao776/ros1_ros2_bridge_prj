@@ -1,30 +1,27 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
+from ament_index_python.packages import get_package_share_directory
+import os
 
 
 def generate_launch_description():
-    """
-    Generates the launch description for starting the ros1_bridge dynamic_bridge
-    with topic remapping.
-    """
+    # 获取配置文件路径
+    bridge_config_path = os.path.join(
+        get_package_share_directory("bridge_launcher"),  # 替换为实际包名
+        "config",
+        "bridge.yaml",
+    )
+
     return LaunchDescription(
         [
+            # 启动parameter_bridge（替代dynamic_bridge）
             Node(
                 package="ros1_bridge",
-                executable="dynamic_bridge",
+                executable="parameter_bridge",  # 使用parameter_bridge
                 name="ros1_bridge",
                 output="screen",
-                arguments=[
-                    "--bridge-all-2to1-topics",
-                    # "--bridge-all-topics"
-                    # "/camera/camera/color/image_raw@sensor_msgs/msg/Image@/camera/camera/color/image_raw",
-                    # 示例: 将 ROS 1 的 /scan (类型: sensor_msgs/LaserScan) 桥接到 ROS 2
-                    # '/scan@sensor_msgs/LaserScan@{'
-                ],
-                remappings=[
-                    # 修改输入名: ('ROS 2中使用的话题名', '桥接后在ROS 1中使用的话题名')
-                    # ('/camera/camera/color/image_raw', '/camera/color/image_raw')
-                ],
+                # 通过参数指定配置文件（ROS1参数服务器需提前加载该配置）
+                parameters=[{"config_file": bridge_config_path}],  # 传递配置文件路径
             )
         ]
     )
