@@ -162,8 +162,16 @@ bridge_env
 ros2 launch ~/dynamic_bridge_launch.py
 # terminal 3
 bridge_env
-rosbag record -a -O ros1_bag_name.bag
+rosbag record /camera/camera/color/image_raw/compressed /livox/lidar /livox/imu /livox/point -O ros1_bag_name.bag
 # terminal 4
 ros2_env
+# compress images
+ros2 run image_transport republish raw compressed --ros-args --remap in:=/camera/camera/color/image_raw --remap out/compressed:=/camera/camera/color/image_raw/compressed
+# terminal 5
+ros2_env
+# play bag
 ros2 bag play /root/shared_files/rosbag/ros1bag/ros2bags/nav_bag_2025-09-21_23-33-36 -r 0.5 --read-ahead-queue-size 2000
+
+# if uncompress
+ros2 run image_transport republish compressed raw --ros-args --remap in/compressed:=/camera/camera/color/image_raw/compressed --remap out:=/camera/camera/color/image_raw
 ```

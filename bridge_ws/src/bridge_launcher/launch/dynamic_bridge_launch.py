@@ -1,27 +1,27 @@
-from launch import LaunchDescription
-from launch_ros.actions import Node
-from ament_index_python.packages import get_package_share_directory
 import os
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import ExecuteProcess
 
 
 def generate_launch_description():
-    # 获取配置文件路径
+    # Get the full path to your bridge.yaml configuration file
     bridge_config_path = os.path.join(
-        get_package_share_directory("bridge_launcher"),  # 替换为实际包名
-        "config",
-        "bridge.yaml",
+        get_package_share_directory("bridge_launcher"), "config", "bridge.yaml"
     )
 
     return LaunchDescription(
         [
-            # 启动parameter_bridge（替代dynamic_bridge）
-            Node(
-                package="ros1_bridge",
-                executable="parameter_bridge",  # 使用parameter_bridge
-                name="ros1_bridge",
-                output="screen",
-                # 通过参数指定配置文件（ROS1参数服务器需提前加载该配置）
-                parameters=[{"config_file": bridge_config_path}],  # 传递配置文件路径
-            )
+            # Action 1: Load the parameters into the ROS1 parameter server.
+            # This must happen before the bridge starts.
+            ExecuteProcess(
+                cmd=["rosparam", "load", bridge_config_path], output="screen"
+            ),
+            # Action 2: Run the parameter_bridge using 'ros2 run'.
+            # This is launched as a simple executable process to prevent
+            # ros2 launch from adding extra arguments that cause the crash.
+            ExecuteProcess(
+                cmd=["ros2", "run", "ros1_bridge", "parameter_bridge"], output="screen"
+            ),
         ]
     )

@@ -31,10 +31,32 @@ ENV_SETUP = {
     "bridge": BRIDGE_ENV_CMD,
     "ros1_record": ROS1_ENV_CMD,
     "ros2_play": ROS2_ENV_CMD,
+    # 新增: 为图像压缩节点定义环境
+    "ros2_compress": ROS2_ENV_CMD,
 }
 
 BRIDGE_LAUNCH_FILE = os.path.expanduser("~/dynamic_bridge_launch.py")
-VERIFICATION_TOPIC = "/camera/camera/color/image_raw"
+
+# --- 新增和修改的配置 ---
+# 定义原始图像话题（从ROS2 bag中播放）
+RAW_IMAGE_TOPIC = "/camera/camera/color/image_raw"
+# 定义压缩后的图像话题（将被录制到ROS1 bag）
+COMPRESSED_IMAGE_TOPIC = f"{RAW_IMAGE_TOPIC}/compressed"
+
+# 定义需要录制到ROS1 bag中的话题列表
+# 注意：这里我们录制压缩后的话题 COMPRESSED_IMAGE_TOPIC
+ROS1_RECORD_TOPICS = [
+    COMPRESSED_IMAGE_TOPIC,
+    "/livox/lidar",
+    "/livox/imu",
+    "/livox/point",
+]
+
+# 定义用于验证数据流是否通畅的话题
+# 我们仍然检查原始图像话题是否能通过bridge，这足以验证bridge是否正常工作
+VERIFICATION_TOPIC = RAW_IMAGE_TOPIC
+# --- 配置结束 ---
+
 # ==============================================================================
 
 
@@ -225,16 +247,49 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str):
             )
         print_info(f"dynamic_bridge 已启动 (PID: {p_bridge.pid})")
 
-        # 3. 验证数据流
+        # ==================================================================
+        # 3. 新增: 启动图像压缩节点
+        # ==================================================================
+        print_info("启动图像压缩节点 (image_transport republish)...")
+        compress_cmd = build_command(
+            "ros2_compress",
+            f"ros2 run image_transport republish raw compressed --ros-args "
+            f"--remap in:={RAW_IMAGE_TOPIC} "
+            f"--remap out/compressed:={COMPRESSED_IMAGE_TOPIC}",
+        )
+        p_compressor = subprocess.Popen(
+            compress_cmd,
+            shell=True,
+            preexec_fn=preexec_fn,
+            executable="/bin/bash",
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        processes.append(p_compressor)
+        time.sleep(2)  # 等待压缩节点启动
+        if p_compressor.poll() is not None:
+            raise RuntimeError(
+                f"图像压缩节点启动失败! 错误: {p_compressor.stderr.read().decode()}"
+            )
+        print_info(f"图像压缩节点已启动 (PID: {p_compressor.pid})")
+        # ==================================================================
+
+        # 4. 验证数据流 (原步骤3)
         if not verify_data_flow(ros2_bag_path, VERIFICATION_TOPIC):
             raise RuntimeError("无法通过主动验证建立数据流，脚本终止。")
 
-        # 4. 正式录制和播放
+        # 5. 正式录制和播放 (原步骤4)
         print_info("=" * 30)
         print_success("系统已就绪，开始正式录制和播放！")
+
+        # --- 修改: 使用明确的话题列表进行录制 ---
+        print_info(f"将要录制以下 topics: {', '.join(ROS1_RECORD_TOPICS)}")
         record_cmd = build_command(
-            "ros1_record", f"rosbag record -a -O {ros1_bag_name}"
+            "ros1_record",
+            f"rosbag record {' '.join(ROS1_RECORD_TOPICS)} -O {ros1_bag_name}",
         )
+        # --- 修改结束 ---
+
         p_recorder = subprocess.Popen(
             record_cmd,
             shell=True,
@@ -307,7 +362,7 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="通过主动验证数据流来将 ROS 2 bag 转换为 ROS 1 bag。",
+        description="通过主动验证数据流来将 ROS 2 bag 转换为 ROS 1 bag，并进行图像压缩。",
         formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.add_argument("ros2_bag", type=str, help="输入的 ROS 2 bag 文件路径")
