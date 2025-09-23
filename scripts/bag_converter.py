@@ -99,7 +99,6 @@ def verify_data_flow(
     ros2_bag_path: str,
     topic: str,
     max_attempts: int = 15,
-    # --- 修改: 增加静默超时，给 bridge 更多时间来建立话题连接 ---
     silence_timeout: int = 10,
     required_successes: int = 5,
 ) -> bool:
@@ -174,29 +173,29 @@ def verify_data_flow(
 
 
 def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
+    # =======================================================
+    # === 改动 1: 在函数开始时记录时间 ===
+    # =======================================================
+    start_time = time.time()
+
     processes: List[subprocess.Popen] = []
     player_process: Optional[subprocess.Popen] = None
     p_roscore: Optional[subprocess.Popen] = None
     roscore_started_by_script = False
+    conversion_successful = False
 
-    # --- 核心逻辑修正: 动态决定验证和录制的话题 ---
     if compress:
         print_info("运行在 [压缩模式]下，将启动图像压缩节点。")
-        # 验证的话题是压缩节点的输出，即压缩图像
         verification_topic = COMPRESSED_IMAGE_TOPIC
-        # 录制的话题也是压缩图像
         image_topic_to_record = COMPRESSED_IMAGE_TOPIC
     else:
         print_info("运行在 [标准模式]下，不进行图像压缩。")
-        # 验证的话题是直接从 bag 播放出来的原始图像
         verification_topic = COMPRESSED_IMAGE_TOPIC
-        # 录制的话题也是原始图像
         image_topic_to_record = COMPRESSED_IMAGE_TOPIC
 
     ros1_record_topics = [image_topic_to_record] + OTHER_TOPICS_TO_RECORD
 
     try:
-        # 1. 启动 roscore
         print_info("检查 roscore 状态...")
         if not is_roscore_running():
             print_info("roscore 未运行，正在启动...")
@@ -219,7 +218,6 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
         else:
             print_success("检测到 roscore 已在运行，将使用现有实例。")
 
-        # 2. 启动 bridge
         print_info("启动 dynamic_bridge...")
         p_bridge = subprocess.Popen(
             build_command("bridge", f"ros2 launch {BRIDGE_LAUNCH_FILE}"),
@@ -230,7 +228,6 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
             stderr=subprocess.PIPE,
         )
         processes.append(p_bridge)
-        # 保留5秒等待时间
         print_info("等待 3 秒，确保 bridge 完成初始化...")
         time.sleep(3)
         if p_bridge.poll() is not None:
@@ -239,7 +236,6 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
             )
         print_info(f"dynamic_bridge 已启动 (PID: {p_bridge.pid})")
 
-        # 3. (条件性)启动图像压缩节点
         if compress:
             print_info("启动图像压缩节点 (image_transport republish)...")
             compress_cmd = build_command(
@@ -262,11 +258,9 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
                 )
             print_info(f"图像压缩节点已启动 (PID: {p_compressor.pid})")
 
-        # 4. 验证数据流 (使用动态确定的图像话题)
         if not verify_data_flow(ros2_bag_path, verification_topic):
             raise RuntimeError("无法通过主动验证建立数据流，脚本终止。")
 
-        # 5. 正式录制和播放
         print_info("=" * 30)
         print_success("系统已就绪，开始正式录制和播放！")
         print_info(f"将要录制以下 topics: {', '.join(ros1_record_topics)}")
@@ -309,7 +303,6 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
     except Exception as e:
         print_error(f"脚本运行出错: {e}")
     finally:
-        # 清理进程的逻辑保持不变
         print_info("=" * 30)
         print_info("开始清理所有由本脚本启动的进程...")
         if player_process and player_process.poll() is None:
@@ -332,18 +325,118 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
                         os.killpg(pgid, signal.SIGKILL)
                     except ProcessLookupError:
                         pass
-        print_success("所有进程已清理完毕。")
+        print_success("所有转换相关进程已清理完毕。")
+
         if os.path.exists(ros1_bag_name):
             print_success(f"ROS 1 bag 文件已成功保存为: {ros1_bag_name}")
+            conversion_successful = True
         elif os.path.exists(ros1_bag_name + ".active"):
             print_error(f"Bag 文件未能成功关闭，仍为: {ros1_bag_name}.active")
         else:
-            print_warning("未找到输出的 bag 文件。")
+            print_warning("未找到输出的 bag 文件，跳过后续步骤。")
+
+    if conversion_successful:
+        print_info("=" * 40)
+        print_success("ROS1 Bag 转换完成，开始启动建图和回放流程...")
+        print_info("=" * 40)
+
+        p_mapping = None
+        p_play_ros1 = None
+
+        try:
+            print_info("正在启动建图节点 (mapping_mid360.launch)...")
+            map_launch_cmd_str = (
+                "cd /root/catkin_ws && " "roslaunch map_updater mapping_mid360.launch"
+            )
+            map_launch_cmd = build_command("ros1_record", map_launch_cmd_str)
+            p_mapping = subprocess.Popen(
+                map_launch_cmd,
+                shell=True,
+                preexec_fn=preexec_fn,
+                executable="/bin/bash",
+            )
+            print_success(
+                f"建图节点已启动 (PID: {p_mapping.pid})。等待 5 秒以确保节点完全初始化..."
+            )
+            time.sleep(5)
+
+            if p_mapping.poll() is not None:
+                raise RuntimeError("建图节点启动失败，请检查launch文件和ROS环境。")
+
+            print_info(f"开始播放转换后的 ROS1 bag: {ros1_bag_name}")
+            play_ros1_cmd_str = f"rosbag play {ros1_bag_name}"
+            play_ros1_cmd = build_command("ros1_record", play_ros1_cmd_str)
+            p_play_ros1 = subprocess.Popen(
+                play_ros1_cmd, shell=True, preexec_fn=preexec_fn, executable="/bin/bash"
+            )
+            print_info(f"rosbag play 已启动 (PID: {p_play_ros1.pid})，等待播放结束...")
+            p_play_ros1.wait()
+
+            if p_play_ros1.returncode == 0:
+                print_success("ROS1 bag 播放完成。")
+            else:
+                print_error(
+                    f"ROS1 bag 播放似乎遇到了错误 (退出码: {p_play_ros1.returncode})。"
+                )
+
+            print_info("ROS1 bag 播放完毕，准备保存地图...")
+            save_map_cmd_str = "rosservice call /save_map"
+            save_map_cmd = build_command("ros1_record", save_map_cmd_str)
+
+            save_map_result = subprocess.run(
+                save_map_cmd,
+                shell=True,
+                executable="/bin/bash",
+                capture_output=True,
+                text=True,
+            )
+
+            if save_map_result.returncode == 0:
+                print_success("地图保存服务调用成功！")
+                print_info(f"服务输出: {save_map_result.stdout.strip()}")
+
+                # =======================================================
+                # === 改动 2: 计算并打印总耗时 ===
+                # =======================================================
+                end_time = time.time()
+                elapsed_seconds = end_time - start_time
+                minutes = int(elapsed_seconds // 60)
+                seconds = int(elapsed_seconds % 60)
+                print_success(f"全流程处理完成，总耗时: {minutes} 分 {seconds} 秒。")
+
+                # Debug: 暂停以便检查输出
+                time.sleep(888888)
+                # =======================================================
+            else:
+                print_error("地图保存服务调用失败！")
+                print_error(f"错误详情: {save_map_result.stderr.strip()}")
+
+        except KeyboardInterrupt:
+            print_info("\n检测到手动中断 (Ctrl+C)，开始清理建图和回放进程...")
+        except Exception as e:
+            print_error(f"建图或回放阶段出错: {e}")
+        finally:
+            print_info("开始清理建图和回放进程...")
+            for p in [p_play_ros1, p_mapping]:
+                if p and p.poll() is None:
+                    pgid = os.getpgid(p.pid)
+                    print_info(f"正在终止进程组 (PGID: {pgid})...")
+                    try:
+                        os.killpg(pgid, signal.SIGINT)
+                        p.wait(timeout=3)
+                        print_success(f"进程组 (PGID: {pgid}) 已关闭。")
+                    except (subprocess.TimeoutExpired, ProcessLookupError):
+                        print_warning(f"进程组 {pgid} 关闭超时，强制终止...")
+                        try:
+                            os.killpg(pgid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+            print_success("所有进程清理完毕，脚本执行结束。")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="将 ROS 2 bag 转换为 ROS 1 bag，并可选择进行图像压缩。",
+        description="将 ROS 2 bag 转换为 ROS 1 bag，并可选择进行图像压缩。转换成功后会自动启动建图、回放并保存地图。",
         formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.add_argument("ros2_bag", type=str, help="输入的 ROS 2 bag 文件路径")
