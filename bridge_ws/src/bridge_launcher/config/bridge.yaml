@@ -3,12 +3,12 @@ topics:
   -
     topic: /camera/camera/color/image_raw/compressed
     type: sensor_msgs/msg/CompressedImage
-    queue_size: 30000  # 极大地增加队列容量以缓冲图像数据
+    queue_size: 200  # 极大地增加队列容量以缓冲图像数据
     qos:
-      history: keep_all
+      history: keep_last
       depth: 200           # 队列深度与queue_size匹配
       reliability: reliable  # 确保消息不丢失
-      durability: transient_local   # 优化：不为晚启动的订阅者保留历史消息，降低延迟
+      durability: volatile    # 优化：不为晚启动的订阅者保留历史消息，降低延迟
       # deadline, lifespan, 和 liveliness 保持您原来的设置，它们是合理的
       deadline:
           secs: 43200
@@ -24,12 +24,12 @@ topics:
   -
     topic: /livox/lidar
     type: livox_ros_driver2/msg/CustomMsg
-    queue_size: 30000  # Livox数据包可能非常密集，给予更大的缓冲
+    queue_size: 500  # Livox数据包可能非常密集，给予更大的缓冲
     qos:
-      history: keep_all
+      history: keep_last
       depth: 500
       reliability: reliable
-      durability: transient_local
+      durability: volatile
       deadline:
           secs: 43200
           nsecs: 0
@@ -44,12 +44,12 @@ topics:
   -
     topic: /livox/point
     type: sensor_msgs/msg/PointCloud2
-    queue_size: 30000  # 点云数据同样需要较大的队列
+    queue_size: 500  # 点云数据同样需要较大的队列
     qos:
       history: keep_last
-      depth: 200
+      depth: 500
       reliability: reliable
-      durability: transient_local
+      durability: volatile
       deadline:
           secs: 43200
           nsecs: 0
@@ -64,12 +64,32 @@ topics:
   -
     topic: /livox/imu
     type: sensor_msgs/msg/Imu
-    queue_size: 30000  # IMU频率高但数据小，可以设置一个很大的队列以防万一
+    queue_size: 1000  # IMU频率高但数据小，可以设置一个很大的队列以防万一
     qos:
       history: keep_last
       depth: 1000
       reliability: reliable
-      durability: transient_local
+      durability: volatile
+      deadline:
+          secs: 43200
+          nsecs: 0
+      lifpan:
+          secs: 43200
+          nsecs: 0
+      liveliness: liveliness_system_default
+      liveliness_lease_duration:
+          secs: 20
+          nsecs: 0
+
+  -
+    topic: /pcl_pose
+    type: geometry_msgs/msg/PoseWithCovarianceStamped
+    queue_size: 100  # IMU频率高但数据小，可以设置一个很大的队列以防万一
+    qos:
+      history: keep_last
+      depth: 100
+      reliability: reliable
+      durability: volatile
       deadline:
           secs: 43200
           nsecs: 0

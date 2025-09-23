@@ -31,32 +31,20 @@ ENV_SETUP = {
     "bridge": BRIDGE_ENV_CMD,
     "ros1_record": ROS1_ENV_CMD,
     "ros2_play": ROS2_ENV_CMD,
-    # 新增: 为图像压缩节点定义环境
     "ros2_compress": ROS2_ENV_CMD,
 }
 
 BRIDGE_LAUNCH_FILE = os.path.expanduser("~/dynamic_bridge_launch.py")
 
-# --- 新增和修改的配置 ---
-# 定义原始图像话题（从ROS2 bag中播放）
+# --- 基础话题配置 ---
 RAW_IMAGE_TOPIC = "/camera/camera/color/image_raw"
-# 定义压缩后的图像话题（将被录制到ROS1 bag）
 COMPRESSED_IMAGE_TOPIC = f"{RAW_IMAGE_TOPIC}/compressed"
-
-# 定义需要录制到ROS1 bag中的话题列表
-# 注意：这里我们录制压缩后的话题 COMPRESSED_IMAGE_TOPIC
-ROS1_RECORD_TOPICS = [
-    COMPRESSED_IMAGE_TOPIC,
+OTHER_TOPICS_TO_RECORD = [
     "/livox/lidar",
     "/livox/imu",
     "/livox/point",
+    "/pcl_pose",
 ]
-
-# 定义用于验证数据流是否通畅的话题
-# 我们仍然检查原始图像话题是否能通过bridge，这足以验证bridge是否正常工作
-VERIFICATION_TOPIC = RAW_IMAGE_TOPIC
-# --- 配置结束 ---
-
 # ==============================================================================
 
 
@@ -86,7 +74,6 @@ def preexec_fn():
 
 
 def is_roscore_running() -> bool:
-    """通过执行rosnode list检查roscore是否正在运行"""
     try:
         cmd = build_command("roscore", "rosnode list")
         subprocess.run(
@@ -103,7 +90,6 @@ def is_roscore_running() -> bool:
 
 
 def _reader_thread(stream, q):
-    """一个简单的线程函数，用于从流中读取每一行并放入队列。"""
     for line in iter(stream.readline, ""):
         q.put(line)
     stream.close()
@@ -113,20 +99,15 @@ def verify_data_flow(
     ros2_bag_path: str,
     topic: str,
     max_attempts: int = 15,
-    silence_timeout: int = 5,
+    # --- 修改: 增加静默超时，给 bridge 更多时间来建立话题连接 ---
+    silence_timeout: int = 10,
     required_successes: int = 5,
 ) -> bool:
-    """
-    【看门狗逻辑】主动验证数据流是否稳定建立。
-    - 只要有有效数据，就重置超时计时器。
-    - 只有当数据流连续中断 `silence_timeout` 秒后，才判定为失败。
-    - 当连续检测到 `required_successes` 次有效输出后，判定为成功。
-    """
     for attempt in range(1, max_attempts + 1):
-        print_info(f"数据流稳定性验证尝试: {attempt}/{max_attempts}...")
-
+        print_info(
+            f"数据流稳定性验证尝试: {attempt}/{max_attempts} (验证话题: {topic})..."
+        )
         player_proc, hz_proc = None, None
-
         try:
             play_cmd = build_command(
                 "ros2_play",
@@ -140,7 +121,6 @@ def verify_data_flow(
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-
             hz_cmd_str = f"python3 -u $(which rostopic) hz {topic}"
             hz_cmd = build_command("ros1_record", hz_cmd_str)
             hz_proc = subprocess.Popen(
@@ -152,29 +132,24 @@ def verify_data_flow(
                 stderr=subprocess.DEVNULL,
                 text=True,
             )
-
             output_queue = queue.Queue()
             reader = threading.Thread(
                 target=_reader_thread, args=(hz_proc.stdout, output_queue)
             )
             reader.daemon = True
             reader.start()
-
             success_counter = 0
             last_valid_data_time = time.time()
-
             while True:
                 if time.time() - last_valid_data_time > silence_timeout:
                     print_warning(
                         f"在 {silence_timeout} 秒内未检测到新的有效数据，此轮尝试失败。"
                     )
                     break
-
                 try:
                     line = output_queue.get(timeout=0.1)
                 except queue.Empty:
                     continue
-
                 if "average rate" in line:
                     success_counter += 1
                     last_valid_data_time = time.time()
@@ -194,23 +169,36 @@ def verify_data_flow(
                     except ProcessLookupError:
                         pass
             time.sleep(2)
-
     print_error("所有验证尝试均失败，无法建立稳定的数据流。")
     return False
 
 
-def run_process_manager(ros2_bag_path: str, ros1_bag_name: str):
+def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
     processes: List[subprocess.Popen] = []
     player_process: Optional[subprocess.Popen] = None
     p_roscore: Optional[subprocess.Popen] = None
     roscore_started_by_script = False
 
+    # --- 核心逻辑修正: 动态决定验证和录制的话题 ---
+    if compress:
+        print_info("运行在 [压缩模式]下，将启动图像压缩节点。")
+        # 验证的话题是压缩节点的输出，即压缩图像
+        verification_topic = COMPRESSED_IMAGE_TOPIC
+        # 录制的话题也是压缩图像
+        image_topic_to_record = COMPRESSED_IMAGE_TOPIC
+    else:
+        print_info("运行在 [标准模式]下，不进行图像压缩。")
+        # 验证的话题是直接从 bag 播放出来的原始图像
+        verification_topic = COMPRESSED_IMAGE_TOPIC
+        # 录制的话题也是原始图像
+        image_topic_to_record = COMPRESSED_IMAGE_TOPIC
+
+    ros1_record_topics = [image_topic_to_record] + OTHER_TOPICS_TO_RECORD
+
     try:
-        # 1. 启动 roscore (带智能检测)
+        # 1. 启动 roscore
         print_info("检查 roscore 状态...")
-        if is_roscore_running():
-            print_success("检测到 roscore 已在运行，将使用现有实例。")
-        else:
+        if not is_roscore_running():
             print_info("roscore 未运行，正在启动...")
             p_roscore = subprocess.Popen(
                 build_command("roscore", "roscore"),
@@ -221,13 +209,15 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str):
                 stderr=subprocess.PIPE,
             )
             roscore_started_by_script = True
-            time.sleep(1)
+            time.sleep(2)
+            processes.append(p_roscore)
             if p_roscore.poll() is not None:
                 raise RuntimeError(
                     f"roscore 启动失败! 错误: {p_roscore.stderr.read().decode()}"
                 )
-            processes.append(p_roscore)
             print_success(f"roscore 已由本脚本启动 (PID: {p_roscore.pid})")
+        else:
+            print_success("检测到 roscore 已在运行，将使用现有实例。")
 
         # 2. 启动 bridge
         print_info("启动 dynamic_bridge...")
@@ -240,56 +230,50 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str):
             stderr=subprocess.PIPE,
         )
         processes.append(p_bridge)
-        time.sleep(1)
+        # 保留5秒等待时间
+        print_info("等待 3 秒，确保 bridge 完成初始化...")
+        time.sleep(3)
         if p_bridge.poll() is not None:
             raise RuntimeError(
                 f"Bridge 启动失败! 错误: {p_bridge.stderr.read().decode()}"
             )
         print_info(f"dynamic_bridge 已启动 (PID: {p_bridge.pid})")
 
-        # ==================================================================
-        # 3. 新增: 启动图像压缩节点
-        # ==================================================================
-        print_info("启动图像压缩节点 (image_transport republish)...")
-        compress_cmd = build_command(
-            "ros2_compress",
-            f"ros2 run image_transport republish raw compressed --ros-args "
-            f"--remap in:={RAW_IMAGE_TOPIC} "
-            f"--remap out/compressed:={COMPRESSED_IMAGE_TOPIC}",
-        )
-        p_compressor = subprocess.Popen(
-            compress_cmd,
-            shell=True,
-            preexec_fn=preexec_fn,
-            executable="/bin/bash",
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-        processes.append(p_compressor)
-        time.sleep(2)  # 等待压缩节点启动
-        if p_compressor.poll() is not None:
-            raise RuntimeError(
-                f"图像压缩节点启动失败! 错误: {p_compressor.stderr.read().decode()}"
+        # 3. (条件性)启动图像压缩节点
+        if compress:
+            print_info("启动图像压缩节点 (image_transport republish)...")
+            compress_cmd = build_command(
+                "ros2_compress",
+                f"ros2 run image_transport republish raw compressed --ros-args --remap in:={RAW_IMAGE_TOPIC} --remap out/compressed:={COMPRESSED_IMAGE_TOPIC}",
             )
-        print_info(f"图像压缩节点已启动 (PID: {p_compressor.pid})")
-        # ==================================================================
+            p_compressor = subprocess.Popen(
+                compress_cmd,
+                shell=True,
+                preexec_fn=preexec_fn,
+                executable="/bin/bash",
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+            processes.append(p_compressor)
+            time.sleep(2)
+            if p_compressor.poll() is not None:
+                raise RuntimeError(
+                    f"图像压缩节点启动失败! 错误: {p_compressor.stderr.read().decode()}"
+                )
+            print_info(f"图像压缩节点已启动 (PID: {p_compressor.pid})")
 
-        # 4. 验证数据流 (原步骤3)
-        if not verify_data_flow(ros2_bag_path, VERIFICATION_TOPIC):
+        # 4. 验证数据流 (使用动态确定的图像话题)
+        if not verify_data_flow(ros2_bag_path, verification_topic):
             raise RuntimeError("无法通过主动验证建立数据流，脚本终止。")
 
-        # 5. 正式录制和播放 (原步骤4)
+        # 5. 正式录制和播放
         print_info("=" * 30)
         print_success("系统已就绪，开始正式录制和播放！")
-
-        # --- 修改: 使用明确的话题列表进行录制 ---
-        print_info(f"将要录制以下 topics: {', '.join(ROS1_RECORD_TOPICS)}")
+        print_info(f"将要录制以下 topics: {', '.join(ros1_record_topics)}")
         record_cmd = build_command(
             "ros1_record",
-            f"rosbag record {' '.join(ROS1_RECORD_TOPICS)} -O {ros1_bag_name}",
+            f"rosbag record {' '.join(ros1_record_topics)} -O {ros1_bag_name}",
         )
-        # --- 修改结束 ---
-
         p_recorder = subprocess.Popen(
             record_cmd,
             shell=True,
@@ -305,8 +289,7 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str):
         print_info(f"rosbag record 已启动 (PID: {p_recorder.pid})")
 
         play_cmd = build_command(
-            "ros2_play",
-            f"ros2 bag play {ros2_bag_path} --read-ahead-queue-size 2000",
+            "ros2_play", f"ros2 bag play {ros2_bag_path} --read-ahead-queue-size 2000"
         )
         player_process = subprocess.Popen(
             play_cmd, shell=True, preexec_fn=preexec_fn, executable="/bin/bash"
@@ -326,16 +309,15 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str):
     except Exception as e:
         print_error(f"脚本运行出错: {e}")
     finally:
+        # 清理进程的逻辑保持不变
         print_info("=" * 30)
         print_info("开始清理所有由本脚本启动的进程...")
-
         if player_process and player_process.poll() is None:
             try:
                 os.killpg(os.getpgid(player_process.pid), signal.SIGKILL)
                 print_info("已停止 ros2 bag play")
             except ProcessLookupError:
                 pass
-
         for p in reversed(processes):
             if p and p.poll() is None:
                 pgid = os.getpgid(p.pid)
@@ -350,7 +332,6 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str):
                         os.killpg(pgid, signal.SIGKILL)
                     except ProcessLookupError:
                         pass
-
         print_success("所有进程已清理完毕。")
         if os.path.exists(ros1_bag_name):
             print_success(f"ROS 1 bag 文件已成功保存为: {ros1_bag_name}")
@@ -362,16 +343,23 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="通过主动验证数据流来将 ROS 2 bag 转换为 ROS 1 bag，并进行图像压缩。",
+        description="将 ROS 2 bag 转换为 ROS 1 bag，并可选择进行图像压缩。",
         formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.add_argument("ros2_bag", type=str, help="输入的 ROS 2 bag 文件路径")
     parser.add_argument("ros1_bag", type=str, help="输出的 ROS 1 bag 文件名")
+    parser.add_argument(
+        "--compress",
+        action="store_true",
+        help="添加此标志以对包内的 raw image 进行压缩处理。默认不压缩。",
+    )
     args = parser.parse_args()
+
     if not os.path.isdir(args.ros2_bag):
         print_error(f"指定的 ROS 2 bag 路径不存在: {args.ros2_bag}")
         sys.exit(1)
     if not os.path.isfile(BRIDGE_LAUNCH_FILE):
         print_error(f"找不到 Bridge 启动文件: {BRIDGE_LAUNCH_FILE}")
         sys.exit(1)
-    run_process_manager(args.ros2_bag, args.ros1_bag)
+
+    run_process_manager(args.ros2_bag, args.ros1_bag, args.compress)

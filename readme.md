@@ -88,34 +88,53 @@ if [ -f ~/.bash_aliases ]; then
     . ~/.bash_aliases
 fi
 
-# ===============================================================
-# ================= ROS Environment Setup =======================
-# ===============================================================
+# ===================================================================================
+# ================= ROS Environment Setup (exec-based for pristine sessions) ========
+# ===================================================================================
+# Note: These functions use `exec` to replace the current shell with a new one,
+# ensuring a completely clean environment, exactly like opening a new terminal.
+# The side effect is that the command history from before running the function is lost.
+# ===================================================================================
 
-# --- Base ROS Environments ---
-# ROS 1 Noetic
-alias ros1_env="source /opt/ros/noetic/setup.bash && source ~/catkin_ws/devel/setup.bash && echo 'ROS 1 Noetic environment sourced.'"
+# --- ROS 1 Noetic ---
+function ros1_env {
+    echo "🔄 Restarting shell for a clean ROS 1 Noetic environment..."
+    exec $SHELL -c "
+        source /opt/ros/noetic/setup.bash;
+        source ~/catkin_ws/devel/setup.bash;
+        source /root/shared_files/ros1_ros2_bridge_prj/ws_livox2_ros1/devel/setup.bash;
+        echo '>>> ✅ ROS 1 Noetic environment sourced.';
+        $SHELL"
+}
 
-# ROS 2 Galactic
-alias ros2_env="source /opt/ros/galactic/setup.bash && source /root/shared_files/ros1_ros2_bridge_prj/bridge_ws/install/local_setup.bash && echo 'ROS 2 Galactic environment sourced.'"
+# --- ROS 2 Galactic ---
+function ros2_env {
+    echo "🔄 Restarting shell for a clean ROS 2 Galactic environment..."
+    exec $SHELL -c "
+        source /opt/ros/galactic/setup.bash;
+        source /root/shared_files/ros1_ros2_bridge_prj/bridge_ws/install/local_setup.bash;
+        echo '>>> ✅ ROS 2 Galactic environment sourced.';
+        $SHELL"
+}
 
-# --- Bridge Environment ---
-# ROS 1, ROS 2, and Bridge Workspaces
-alias bridge_env="source /opt/ros/noetic/setup.bash && \
-		          source ~/catkin_ws/devel/setup.bash && \
-                  source /opt/ros/galactic/setup.bash && \
-                  source /root/shared_files/ros1_ros2_bridge_prj/bridge_ws/install/local_setup.bash && \
-                  export ROS_MASTER_URI=http://localhost:11311 && \
-                  echo 'ROS1, ROS2 & Bridge environments sourced. ROS_MASTER_URI is set.'"
+# --- Bridge Environment (ROS 1 & ROS 2) ---
+function bridge_env {
+    echo "🔄 Restarting shell for a clean Bridge (ROS1+ROS2) environment..."
+    exec $SHELL -c "
+        source /opt/ros/noetic/setup.bash;
+        source ~/catkin_ws/devel/setup.bash;
+        source /root/shared_files/ros1_ros2_bridge_prj/ws_livox2_ros1/devel/setup.bash;
+        source /opt/ros/galactic/setup.bash;
+        source /root/shared_files/ros1_ros2_bridge_prj/bridge_ws/install/local_setup.bash;
+        export ROS_MASTER_URI=http://localhost:11311;
+        echo '>>> ✅ Bridge (ROS1+ROS2) environment sourced. ROS_MASTER_URI is set.';
+        $SHELL"
+}
 
 # Set a default environment for new terminals
-#ros1_env
+# ros1_env
 # ros2_env
 # bridge_env
-
-# ===============================================================
-# ================= End of ROS Setup ============================
-# ===============================================================
 ```
 
 # Run with docker (recommend)
@@ -133,10 +152,10 @@ docker run -it --rm -v /tmp/.x11-unix:/tmp/.x11-unix \
                 -e DISPLAY=unix$DISPLAY -e GDK_SCALE -e GDK_DPI_SCALE \
                 --privileged --net=host --user root shenhao776/amr_ros1_x86:v0.3 \
                 /root/shared_files/ros1_ros2_bridge_prj/scripts/bag_converter.py \
-                /root/shared_files/rosbag/ros1bag/ros2bags/nav_bag_2025-09-21_23-33-36 /root/shared_files/rosbag/ros1bag/lvio_bag/nav_bag_2025-09-21_23-33-36.bag
+                /ros2bag_path /ros1_bag_name.bag
 
 # run in another docker container
-     ssh -o StrictHostKeyChecking=no hao@localhost \
+ssh -t -o StrictHostKeyChecking=no hao@localhost \
      "docker run --rm -e ROS_DOMAIN_ID=1 \
      -v /tmp/.x11-unix:/tmp/.x11-unix \
      -v ~/shared_files:/root/shared_files \
@@ -145,7 +164,7 @@ docker run -it --rm -v /tmp/.x11-unix:/tmp/.x11-unix \
      -e DISPLAY=unix$DISPLAY -e GDK_SCALE -e GDK_DPI_SCALE \
      --privileged --net=host --user root shenhao776/amr_ros1_x86:v0.3 \
      /root/shared_files/ros1_ros2_bridge_prj/scripts/bag_converter.py \
-     /root/shared_files/rosbag/ros1bag/ros2bags/nav_bag_2025-09-21_23-33-36 /root/shared_files/rosbag/ros1bag/lvio_bag/nav_bag_2025-09-21_23-33-36.bag"
+     /ros2bag_path /ros1_bag_name.bag"
 ```
 
 ## Manually run
@@ -162,10 +181,10 @@ bridge_env
 ros2 launch ~/dynamic_bridge_launch.py
 # terminal 3
 bridge_env
-rosbag record /camera/camera/color/image_raw/compressed /livox/lidar /livox/imu /livox/point -O ros1_bag_name.bag
+rosbag record /camera/camera/color/image_raw/compressed /livox/lidar /livox/imu /livox/point /pcl_pose -O ros1_bag_name.bag
 # terminal 4
 ros2_env
-# compress images
+# if no compress image, run
 ros2 run image_transport republish raw compressed --ros-args --remap in:=/camera/camera/color/image_raw --remap out/compressed:=/camera/camera/color/image_raw/compressed
 # terminal 5
 ros2_env
