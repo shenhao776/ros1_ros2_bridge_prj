@@ -155,16 +155,17 @@ docker run -it --rm -v /tmp/.x11-unix:/tmp/.x11-unix \
                 /ros2bag_path /ros1_bag_name.bag
 
 # run in another docker container
-ssh -t -o StrictHostKeyChecking=no hao@localhost \
-     "docker run --rm -e ROS_DOMAIN_ID=1 \
+# 注意：这里的"/home/hao/shared_files"路径是相对于宿主机的路径！
+# "/root/shared_files/ros1_ros2_bridge_prj/scripts/bag_converter.py" 是容器内的路径
+docker run --rm -e ROS_DOMAIN_ID=1 \
      -v /tmp/.x11-unix:/tmp/.x11-unix \
-     -v ~/shared_files:/root/shared_files \
+     -v /home/hao/shared_files:/root/shared_files \
      -v /dev:/dev \
      --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all \
-     -e DISPLAY=unix$DISPLAY -e GDK_SCALE -e GDK_DPI_SCALE \
+     -e DISPLAY=$DISPLAY -e GDK_SCALE -e GDK_DPI_SCALE \
      --privileged --net=host --user root shenhao776/amr_ros1_x86:v0.3 \
      /root/shared_files/ros1_ros2_bridge_prj/scripts/bag_converter.py \
-     /ros2bag_path /ros1_bag_name.bag"
+     /ros2bag_path /ros1_bag_name.bag
 ```
 
 ## Manually run
