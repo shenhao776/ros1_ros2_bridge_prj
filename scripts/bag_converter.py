@@ -12,7 +12,7 @@ import queue
 import threading
 
 # ==============================================================================
-# 用户配置区域
+# User Configuration Area
 # ==============================================================================
 NOETIC_SETUP = "source /opt/ros/noetic/setup.bash"
 GALACTIC_SETUP = "source /opt/ros/galactic/setup.bash"
@@ -36,7 +36,7 @@ ENV_SETUP = {
 
 BRIDGE_LAUNCH_FILE = os.path.expanduser("~/dynamic_bridge_launch.py")
 
-# --- 基础话题配置 ---
+# --- Basic Topic Configuration ---
 RAW_IMAGE_TOPIC = "/camera/camera/color/image_raw"
 COMPRESSED_IMAGE_TOPIC = f"{RAW_IMAGE_TOPIC}/compressed"
 OTHER_TOPICS_TO_RECORD = [
@@ -104,7 +104,7 @@ def verify_data_flow(
 ) -> bool:
     for attempt in range(1, max_attempts + 1):
         print_info(
-            f"数据流稳定性验证尝试: {attempt}/{max_attempts} (验证话题: {topic})..."
+            f"Data flow stability verification attempt: {attempt}/{max_attempts} (verifying topic: {topic})..."
         )
         player_proc, hz_proc = None, None
         try:
@@ -142,7 +142,7 @@ def verify_data_flow(
             while True:
                 if time.time() - last_valid_data_time > silence_timeout:
                     print_warning(
-                        f"在 {silence_timeout} 秒内未检测到新的有效数据，此轮尝试失败。"
+                        f"No new valid data detected within {silence_timeout} seconds, this attempt failed."
                     )
                     break
                 try:
@@ -153,10 +153,10 @@ def verify_data_flow(
                     success_counter += 1
                     last_valid_data_time = time.time()
                     print_info(
-                        f"检测到有效速率更新... (连续成功: {success_counter}/{required_successes})"
+                        f"Detected valid rate update... (consecutive successes: {success_counter}/{required_successes})"
                     )
                     if success_counter >= required_successes:
-                        print_success("检测到连续稳定的数据流！")
+                        print_success("Detected continuous stable data flow!")
                         return True
                 elif "no new messages" in line:
                     success_counter = 0
@@ -168,13 +168,15 @@ def verify_data_flow(
                     except ProcessLookupError:
                         pass
             time.sleep(2)
-    print_error("所有验证尝试均失败，无法建立稳定的数据流。")
+    print_error(
+        "All verification attempts failed, unable to establish stable data flow."
+    )
     return False
 
 
 def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
     # =======================================================
-    # === 改动 1: 在函数开始时记录时间 ===
+    # === Change 1: Record time at the start of the function ===
     # =======================================================
     start_time = time.time()
 
@@ -185,20 +187,20 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
     conversion_successful = False
 
     if compress:
-        print_info("运行在 [压缩模式]下，将启动图像压缩节点。")
+        print_info("Running in [compression mode], will start image compression node.")
         verification_topic = COMPRESSED_IMAGE_TOPIC
         image_topic_to_record = COMPRESSED_IMAGE_TOPIC
     else:
-        print_info("运行在 [标准模式]下，不进行图像压缩。")
+        print_info("Running in [standard mode], no image compression.")
         verification_topic = COMPRESSED_IMAGE_TOPIC
         image_topic_to_record = COMPRESSED_IMAGE_TOPIC
 
     ros1_record_topics = [image_topic_to_record] + OTHER_TOPICS_TO_RECORD
 
     try:
-        print_info("检查 roscore 状态...")
+        print_info("Checking roscore status...")
         if not is_roscore_running():
-            print_info("roscore 未运行，正在启动...")
+            print_info("roscore is not running, starting now...")
             p_roscore = subprocess.Popen(
                 build_command("roscore", "roscore"),
                 shell=True,
@@ -212,13 +214,15 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
             processes.append(p_roscore)
             if p_roscore.poll() is not None:
                 raise RuntimeError(
-                    f"roscore 启动失败! 错误: {p_roscore.stderr.read().decode()}"
+                    f"roscore failed to start! Error: {p_roscore.stderr.read().decode()}"
                 )
-            print_success(f"roscore 已由本脚本启动 (PID: {p_roscore.pid})")
+            print_success(f"roscore started by this script (PID: {p_roscore.pid})")
         else:
-            print_success("检测到 roscore 已在运行，将使用现有实例。")
+            print_success(
+                "Detected roscore is already running, will use existing instance."
+            )
 
-        print_info("启动 dynamic_bridge...")
+        print_info("Starting dynamic_bridge...")
         p_bridge = subprocess.Popen(
             build_command("bridge", f"ros2 launch {BRIDGE_LAUNCH_FILE}"),
             shell=True,
@@ -228,16 +232,16 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
             stderr=subprocess.PIPE,
         )
         processes.append(p_bridge)
-        print_info("等待 3 秒，确保 bridge 完成初始化...")
+        print_info("Waiting 3 seconds to ensure bridge completes initialization...")
         time.sleep(3)
         if p_bridge.poll() is not None:
             raise RuntimeError(
-                f"Bridge 启动失败! 错误: {p_bridge.stderr.read().decode()}"
+                f"Bridge failed to start! Error: {p_bridge.stderr.read().decode()}"
             )
-        print_info(f"dynamic_bridge 已启动 (PID: {p_bridge.pid})")
+        print_info(f"dynamic_bridge started (PID: {p_bridge.pid})")
 
         if compress:
-            print_info("启动图像压缩节点 (image_transport republish)...")
+            print_info("Starting image compression node (image_transport republish)...")
             compress_cmd = build_command(
                 "ros2_compress",
                 f"ros2 run image_transport republish raw compressed --ros-args --remap in:={RAW_IMAGE_TOPIC} --remap out/compressed:={COMPRESSED_IMAGE_TOPIC}",
@@ -254,16 +258,18 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
             time.sleep(2)
             if p_compressor.poll() is not None:
                 raise RuntimeError(
-                    f"图像压缩节点启动失败! 错误: {p_compressor.stderr.read().decode()}"
+                    f"Image compression node failed to start! Error: {p_compressor.stderr.read().decode()}"
                 )
-            print_info(f"图像压缩节点已启动 (PID: {p_compressor.pid})")
+            print_info(f"Image compression node started (PID: {p_compressor.pid})")
 
         if not verify_data_flow(ros2_bag_path, verification_topic):
-            raise RuntimeError("无法通过主动验证建立数据流，脚本终止。")
+            raise RuntimeError(
+                "Failed to establish data flow through active verification, script terminated."
+            )
 
         print_info("=" * 30)
-        print_success("系统已就绪，开始正式录制和播放！")
-        print_info(f"将要录制以下 topics: {', '.join(ros1_record_topics)}")
+        print_success("System is ready, starting formal recording and playback!")
+        print_info(f"Topics to be recorded: {', '.join(ros1_record_topics)}")
         record_cmd = build_command(
             "ros1_record",
             f"rosbag record {' '.join(ros1_record_topics)} -O {ros1_bag_name}",
@@ -279,8 +285,8 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
         processes.append(p_recorder)
         time.sleep(2)
         if p_recorder.poll() is not None:
-            raise RuntimeError(f"rosbag record 启动失败!")
-        print_info(f"rosbag record 已启动 (PID: {p_recorder.pid})")
+            raise RuntimeError(f"rosbag record failed to start!")
+        print_info(f"rosbag record started (PID: {p_recorder.pid})")
 
         play_cmd = build_command(
             "ros2_play", f"ros2 bag play {ros2_bag_path} --read-ahead-queue-size 2000"
@@ -288,63 +294,75 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
         player_process = subprocess.Popen(
             play_cmd, shell=True, preexec_fn=preexec_fn, executable="/bin/bash"
         )
-        print_info(f"ros2 bag play 已启动 (PID: {player_process.pid}). 等待播放完成...")
+        print_info(
+            f"ros2 bag play started (PID: {player_process.pid}). Waiting for playback to complete..."
+        )
         player_process.wait()
 
         if player_process.returncode == 0:
-            print_success("ROS 2 bag 播放完成。")
+            print_success("ROS 2 bag playback completed.")
         else:
             print_error(
-                f"ROS 2 bag 播放似乎遇到了错误 (退出码: {player_process.returncode})。"
+                f"ROS 2 bag playback似乎遇到了错误 (exit code: {player_process.returncode})。"
             )
 
     except KeyboardInterrupt:
-        print_info("\n检测到手动中断 (Ctrl+C)，开始清理进程...")
+        print_info(
+            "\nManual interruption detected (Ctrl+C), starting process cleanup..."
+        )
     except Exception as e:
-        print_error(f"脚本运行出错: {e}")
+        print_error(f"Script error occurred: {e}")
     finally:
         print_info("=" * 30)
-        print_info("开始清理所有由本脚本启动的进程...")
+        print_info("Starting cleanup of all processes started by this script...")
         if player_process and player_process.poll() is None:
             try:
                 os.killpg(os.getpgid(player_process.pid), signal.SIGKILL)
-                print_info("已停止 ros2 bag play")
+                print_info("Stopped ros2 bag play")
             except ProcessLookupError:
                 pass
         for p in reversed(processes):
             if p and p.poll() is None:
                 pgid = os.getpgid(p.pid)
-                print_info(f"正在尝试优雅关闭进程组 (PGID: {pgid})...")
+                print_info(
+                    f"Attempting graceful shutdown of process group (PGID: {pgid})..."
+                )
                 try:
                     os.killpg(pgid, signal.SIGINT)
                     p.wait(timeout=5)
-                    print_success(f"进程组 (PGID: {pgid}) 已优雅关闭。")
+                    print_success(f"Process group (PGID: {pgid}) shut down gracefully.")
                 except (subprocess.TimeoutExpired, PermissionError):
-                    print_warning(f"进程组 {pgid} 未能优雅关闭，强制终止...")
+                    print_warning(
+                        f"Process group {pgid} failed to shut down gracefully, force terminating..."
+                    )
                     try:
                         os.killpg(pgid, signal.SIGKILL)
                     except ProcessLookupError:
                         pass
-        print_success("所有转换相关进程已清理完毕。")
+        print_success("All conversion-related processes have been cleaned up.")
 
         if os.path.exists(ros1_bag_name):
-            print_success(f"ROS 1 bag 文件已成功保存为: {ros1_bag_name}")
+            print_success(f"ROS 1 bag file successfully saved as: {ros1_bag_name}")
             conversion_successful = True
         elif os.path.exists(ros1_bag_name + ".active"):
-            print_error(f"Bag 文件未能成功关闭，仍为: {ros1_bag_name}.active")
+            print_error(
+                f"Bag file failed to close properly, still exists as: {ros1_bag_name}.active"
+            )
         else:
-            print_warning("未找到输出的 bag 文件，跳过后续步骤。")
+            print_warning("No output bag file found, skipping subsequent steps.")
 
     if conversion_successful:
         print_info("=" * 40)
-        print_success("ROS1 Bag 转换完成，开始启动建图和回放流程...")
+        print_success(
+            "ROS1 Bag conversion completed, starting mapping and playback process..."
+        )
         print_info("=" * 40)
 
         p_mapping = None
         p_play_ros1 = None
 
         try:
-            print_info("正在启动建图节点 (mapping_mid360.launch)...")
+            print_info("Starting mapping node (mapping_mid360.launch)...")
             map_launch_cmd_str = (
                 "cd /root/catkin_ws && " "roslaunch map_updater mapping_mid360.launch"
             )
@@ -356,30 +374,34 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
                 executable="/bin/bash",
             )
             print_success(
-                f"建图节点已启动 (PID: {p_mapping.pid})。等待 8 秒以确保节点完全初始化..."
+                f"Mapping node started (PID: {p_mapping.pid}). Waiting 8 seconds to ensure node fully initializes..."
             )
             time.sleep(8)
 
             if p_mapping.poll() is not None:
-                raise RuntimeError("建图节点启动失败，请检查launch文件和ROS环境。")
+                raise RuntimeError(
+                    "Mapping node failed to start, please check launch file and ROS environment."
+                )
 
-            print_info(f"开始播放转换后的 ROS1 bag: {ros1_bag_name}")
+            print_info(f"Starting playback of converted ROS1 bag: {ros1_bag_name}")
             play_ros1_cmd_str = f"rosbag play {ros1_bag_name}"
             play_ros1_cmd = build_command("ros1_record", play_ros1_cmd_str)
             p_play_ros1 = subprocess.Popen(
                 play_ros1_cmd, shell=True, preexec_fn=preexec_fn, executable="/bin/bash"
             )
-            print_info(f"rosbag play 已启动 (PID: {p_play_ros1.pid})，等待播放结束...")
+            print_info(
+                f"rosbag play started (PID: {p_play_ros1.pid}), waiting for playback to finish..."
+            )
             p_play_ros1.wait()
 
             if p_play_ros1.returncode == 0:
-                print_success("ROS1 bag 播放完成。")
+                print_success("ROS1 bag playback completed.")
             else:
                 print_error(
-                    f"ROS1 bag 播放似乎遇到了错误 (退出码: {p_play_ros1.returncode})。"
+                    f"ROS1 bag playback encountered an error (exit code: {p_play_ros1.returncode})."
                 )
 
-            print_info("ROS1 bag 播放完毕，准备保存地图...")
+            print_info("ROS1 bag playback finished, preparing to save map...")
             save_map_cmd_str = "rosservice call /save_map"
             save_map_cmd = build_command("ros1_record", save_map_cmd_str)
 
@@ -392,67 +414,73 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
             )
 
             if save_map_result.returncode == 0:
-                print_success("地图保存服务调用成功！")
-                print_info(f"服务输出: {save_map_result.stdout.strip()}")
+                print_success("Map save service call successful!")
+                print_info(f"Service output: {save_map_result.stdout.strip()}")
 
                 # =======================================================
-                # === 改动 2: 计算并打印总耗时 ===
+                # === Change 2: Calculate and print total time elapsed ===
                 # =======================================================
                 end_time = time.time()
                 elapsed_seconds = end_time - start_time
                 minutes = int(elapsed_seconds // 60)
                 seconds = int(elapsed_seconds % 60)
-                print_success(f"全流程处理完成，总耗时: {minutes} 分 {seconds} 秒。")
+                print_success(
+                    f"Full process completed (including conversion from ros2 bag to ros1 bag), total time elapsed: {minutes} minutes {seconds} seconds."
+                )
 
-                # Debug: 暂停以便检查输出
+                # Debug: Pause to inspect output
                 time.sleep(888888)
                 # =======================================================
             else:
-                print_error("地图保存服务调用失败！")
-                print_error(f"错误详情: {save_map_result.stderr.strip()}")
+                print_error("Map save service call failed!")
+                print_error(f"Error details: {save_map_result.stderr.strip()}")
 
         except KeyboardInterrupt:
-            print_info("\n检测到手动中断 (Ctrl+C)，开始清理建图和回放进程...")
+            print_info(
+                "\nManual interruption detected (Ctrl+C), starting cleanup of mapping and playback processes..."
+            )
         except Exception as e:
-            print_error(f"建图或回放阶段出错: {e}")
+            print_error(f"Error in mapping or playback phase: {e}")
         finally:
-            print_info("开始清理建图和回放进程...")
+            print_info("Starting cleanup of mapping and playback processes...")
             for p in [p_play_ros1, p_mapping]:
                 if p and p.poll() is None:
                     pgid = os.getpgid(p.pid)
-                    print_info(f"正在终止进程组 (PGID: {pgid})...")
+                    print_info(f"Terminating process group (PGID: {pgid})...")
                     try:
                         os.killpg(pgid, signal.SIGINT)
                         p.wait(timeout=3)
-                        print_success(f"进程组 (PGID: {pgid}) 已关闭。")
+                        print_success(f"Process group (PGID: {pgid}) closed.")
                     except (subprocess.TimeoutExpired, ProcessLookupError):
-                        print_warning(f"进程组 {pgid} 关闭超时，强制终止...")
+                        print_warning(
+                            f"Process group {pgid} shutdown timed out, force terminating..."
+                        )
                         try:
                             os.killpg(pgid, signal.SIGKILL)
                         except ProcessLookupError:
                             pass
-            print_success("所有进程清理完毕，脚本执行结束。")
+            print_success("All processes cleaned up, script execution completed.")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="将 ROS 2 bag 转换为 ROS 1 bag，并可选择进行图像压缩。转换成功后会自动启动建图、回放并保存地图。",
+        description="Converts ROS 2 bag to ROS 1 bag with optional image compression. Automatically starts mapping, playback and saves map after successful conversion.",
         formatter_class=argparse.RawTextHelpFormatter,
     )
-    parser.add_argument("ros2_bag", type=str, help="输入的 ROS 2 bag 文件路径")
-    parser.add_argument("ros1_bag", type=str, help="输出的 ROS 1 bag 文件名")
+    parser.add_argument("ros2_bag", type=str, help="Path to input ROS 2 bag file")
+    parser.add_argument("ros1_bag", type=str, help="Name for output ROS 1 bag file")
     parser.add_argument(
         "--compress",
         action="store_true",
-        help="添加此标志以对包内的 raw image 进行压缩处理。默认不压缩。",
+        help="Add this flag to compress raw images in the bag. No compression by default.",
     )
     args = parser.parse_args()
 
     if not os.path.isdir(args.ros2_bag):
-        print_error(f"指定的 ROS 2 bag 路径不存在: {args.ros2_bag}")
+        print_error(f"Specified ROS 2 bag path does not exist: {args.ros2_bag}")
         sys.exit(1)
     if not os.path.isfile(BRIDGE_LAUNCH_FILE):
-        print_error(f"找不到 Bridge 启动文件: {BRIDGE_LAUNCH_FILE}")
+        print_error(f"Bridge launch file not found: {BRIDGE_LAUNCH_FILE}")
         sys.exit(1)
 
     run_process_manager(args.ros2_bag, args.ros1_bag, args.compress)
