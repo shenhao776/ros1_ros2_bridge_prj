@@ -356,9 +356,9 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
                 executable="/bin/bash",
             )
             print_success(
-                f"建图节点已启动 (PID: {p_mapping.pid})。等待 5 秒以确保节点完全初始化..."
+                f"建图节点已启动 (PID: {p_mapping.pid})。等待 8 秒以确保节点完全初始化..."
             )
-            time.sleep(5)
+            time.sleep(8)
 
             if p_mapping.poll() is not None:
                 raise RuntimeError("建图节点启动失败，请检查launch文件和ROS环境。")
