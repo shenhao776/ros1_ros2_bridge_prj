@@ -402,38 +402,15 @@ def run_process_manager(ros2_bag_path: str, ros1_bag_name: str, compress: bool):
                 )
 
             print_info("ROS1 bag playback finished, preparing to save map...")
-            save_map_cmd_str = "rosservice call /save_map"
-            save_map_cmd = build_command("ros1_record", save_map_cmd_str)
-
-            save_map_result = subprocess.run(
-                save_map_cmd,
-                shell=True,
-                executable="/bin/bash",
-                capture_output=True,
-                text=True,
+            end_time = time.time()
+            elapsed_seconds = end_time - start_time
+            minutes = int(elapsed_seconds // 60)
+            seconds = int(elapsed_seconds % 60)
+            print_success(
+                f"The time of conversion from ros2 bag to ros1 bag is: {minutes} minutes {seconds} seconds."
             )
-
-            if save_map_result.returncode == 0:
-                print_success("Map save service call successful!")
-                print_info(f"Service output: {save_map_result.stdout.strip()}")
-
-                # =======================================================
-                # === Change 2: Calculate and print total time elapsed ===
-                # =======================================================
-                end_time = time.time()
-                elapsed_seconds = end_time - start_time
-                minutes = int(elapsed_seconds // 60)
-                seconds = int(elapsed_seconds % 60)
-                print_success(
-                    f"Full process completed (including conversion from ros2 bag to ros1 bag), total time elapsed: {minutes} minutes {seconds} seconds."
-                )
-
-                # Debug: Pause to inspect output
-                time.sleep(888888)
-                # =======================================================
-            else:
-                print_error("Map save service call failed!")
-                print_error(f"Error details: {save_map_result.stderr.strip()}")
+            # Debug: Pause to inspect output
+            time.sleep(888888)
 
         except KeyboardInterrupt:
             print_info(
